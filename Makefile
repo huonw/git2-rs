@@ -1,5 +1,7 @@
-lib: git2.rs repository.rs ext.rs git_index.rs reference.rs
-	rustc --lib git2.rs -O -Z debug-info
+LINK_ARGS ?=
+
+lib: *.rs
+	rustc --lib git2.rs -O -Z debug-info --link-args="${LINK_ARGS}"
 
 rgit: lib
 	cd sample; ${MAKE}

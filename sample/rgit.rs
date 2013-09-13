@@ -13,14 +13,14 @@ fn main_usage(program: &str) {
 fn main() {
     let args = os::args();
 
-    let program = copy args[0];
+    let program = args[0].clone();
 
     if args.len() < 2 {
         main_usage(program);
         return;
     }
 
-    let cmd = copy args[1];
+    let cmd = args[1].clone();
     let cmd_args = args.slice(2, args.len());
 
     git2::threads_init();
@@ -41,7 +41,7 @@ fn main() {
 }
 
 fn get_current_repo() -> git2::Repository {
-    let dir = git2::repository::discover(&".", false, &"").get();
+    let dir = git2::repository::discover(&".", false, &"").unwrap();
     git2::repository::open(dir).unwrap()
 }
 
@@ -50,7 +50,7 @@ fn cmd_init(args: &[~str]) {
     if args.len() == 0 {
         os::getcwd().to_str()
     } else {
-        copy args[0]
+        args[0].clone()
     };
 
     git2::repository::init(path, false);
@@ -65,11 +65,11 @@ fn cmd_clone(program: &str, args: &[~str]) {
     if args.len() == 0 {
         clone_usage(program);
     } else {
-        let origin = copy args[0];
+        let origin = args[0].clone();
         let local_path = if args.len() < 2 {
             os::getcwd().to_str()
         } else {
-            copy args[1]
+            args[1].clone()
         };
 
         git2::repository::clone(origin, local_path);
@@ -95,15 +95,14 @@ fn cmd_status(_: &str, _: &[~str]) {
 
     let status = repo.status();
 
-    for status.each() |&tup| {
-        let (path, stat) = tup;
+    for &(ref path, ref stat) in status.iter() {
         if (stat.index_new || stat.index_modified || stat.index_deleted || stat.index_renamed
             || stat.index_typechange)
         {
-            staged.push((copy path, copy stat))
+            staged.push((path.clone(), stat.clone()))
         }
         if stat.wt_new || stat.wt_modified || stat.wt_deleted || stat.wt_typechange {
-            not_staged.push((copy path, copy stat))
+            not_staged.push((path.clone(), stat.clone()))
         }
     }
 
@@ -115,8 +114,7 @@ fn cmd_status(_: &str, _: &[~str]) {
     if !staged.is_empty() {
         println("Changed staged for commit")
     }
-    for staged.each() |&tup| {
-        let (path, stat) = tup;
+    for &(ref path, ref stat) in staged.iter() {
         if stat.index_new {
             print("new: ")
         } else if stat.index_modified {
@@ -129,14 +127,13 @@ fn cmd_status(_: &str, _: &[~str]) {
             print("typechange: ")
         }
 
-        println(path)
+        println(*path)
     }
 
     if !not_staged.is_empty() {
         println("Changed not staged for commit")
     }
-    for not_staged.each() |&tup| {
-        let (path, stat) = tup;
+    for &(ref path, ref stat) in not_staged.iter() {
         if stat.wt_new {
             print("new: ")
         } else if stat.wt_modified {
@@ -147,7 +144,7 @@ fn cmd_status(_: &str, _: &[~str]) {
             print("typechange: ")
         }
 
-        println(path)
+        println(*path)
     }
 }
 
@@ -159,7 +156,7 @@ fn cmd_add(program: &str, args: &[~str]) {
     if args.len() == 0 {
         add_usage(program);
     } else {
-        let path = copy args[0];
+        let path = args[0].clone();
         let repo = get_current_repo();
         let index = repo.index().unwrap();
         index.add_bypath(path);
@@ -175,7 +172,7 @@ fn cmd_rm(program: &str, args: &[~str]) {
     if args.len() == 0 {
         rm_usage(program);
     } else {
-        let path = copy args[0];
+        let path = args[0].clone();
         let repo = get_current_repo();
         let index = repo.index().unwrap();
         index.remove_bypath(path);

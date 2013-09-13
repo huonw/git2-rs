@@ -1,27 +1,27 @@
-use std::libc::c_int;
 use std::str::raw::from_c_str;
-use ext;
+use ffi;
 use super::{Signature, Time};
 
-pub fn to_c_sig(sig: &Signature) -> ext::git_signature {
-    do sig.name.as_c_str |c_name| {
-        do sig.email.as_c_str |c_email| {
-            ext::git_signature {
+pub fn to_c_sig(_sig: &Signature) -> ffi::git_signature {
+    fail!("This is broken due to lifetimes.")
+    /*do sig.name.with_c_str |c_name| {
+        do sig.email.with_c_str |c_email| {
+            ffi::Struct_git_signature {
                 name: c_name,
                 email: c_email,
-                when: ext::git_time {
+                when: ffi::Struct_git_time {
                     time: sig.when.time,
                     offset: sig.when.offset as c_int,
                 }
             }
         }
-    }
+    }*/
 }
 
-pub unsafe fn from_c_sig(c_sig: *ext::git_signature) -> Signature {
+pub unsafe fn from_c_sig(c_sig: *ffi::git_signature) -> Signature {
     Signature {
-        name: from_c_str((*c_sig).name),
-        email: from_c_str((*c_sig).email),
+        name: from_c_str((*c_sig).name as *i8),
+        email: from_c_str((*c_sig).email as *i8),
         when: Time { time: (*c_sig).when.time, offset: (*c_sig).when.offset as int }
     }
 }
@@ -35,29 +35,19 @@ fn time_cmp(a: &Time, b: &Time) -> i64 {
 
 impl Eq for Time {
     fn eq(&self, other: &Time) -> bool {
-        time_cmp(self, other) == 0
-    }
-
-    fn ne(&self, other: &Time) -> bool {
-        time_cmp(self, other) != 0
+        self.equals(other)
     }
 }
 
 impl Ord for Time {
     fn lt(&self, other: &Time) -> bool {
-        time_cmp(self, other) < 0
+        self.cmp(other) == Less
     }
+}
 
-    fn le(&self, other: &Time) -> bool {
-        time_cmp(self, other) <= 0
-    }
-
-    fn gt(&self, other: &Time) -> bool {
-        time_cmp(self, other) > 0
-    }
-
-    fn ge(&self, other: &Time) -> bool {
-        time_cmp(self, other) >= 0
+impl TotalEq for Time {
+    fn equals(&self, other: &Time) -> bool {
+        self.cmp(other) == Equal
     }
 }
 

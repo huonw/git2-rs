@@ -82,8 +82,8 @@ fn commit_apis() {
         Some(commit) => {
             assert_eq!(commit.message(), ~"Create README.md");
             assert_eq!(commit.id(), &oid);
-            assert_eq!(commit.author(), copy signature);
-            assert_eq!(commit.committer(), copy signature);
+            assert_eq!(commit.author(), signature.clone());
+            assert_eq!(commit.committer(), signature);
         },
     }
 }

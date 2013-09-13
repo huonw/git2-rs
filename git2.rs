@@ -7,7 +7,16 @@
 
 #[crate_type = "lib"];
 
-pub mod ext;
+use std::cast;
+
+pub use tree::{Tree, TreeBuilder, TreeEntry};
+pub use commit::Commit;
+pub use blob::Blob;
+pub use repository::Repository;
+pub use reference::Reference;
+pub use git_index::GitIndex;
+
+pub mod ffi;
 pub mod repository;
 pub mod reference;
 pub mod git_index;
@@ -18,6 +27,13 @@ pub mod signature;
 pub mod oid;
 pub mod diff;
 
+#[doc(hidden)]
+pub mod linkhack {
+    #[link_args="-lgit2"]
+    extern {
+    }
+}
+
 condition! {
     git_error: (~str, super::GitError) -> ();
 }
@@ -26,14 +42,16 @@ pub unsafe fn raise() {
     git_error::cond.raise(last_error())
 }
 
+#[fixed_stack_segment]
 pub unsafe fn last_error() -> (~str, GitError) {
-    let err = ext::giterr_last();
-    let message = std::str::raw::from_c_str((*err).message);
+    let err = ffi::giterr_last();
+    let message = std::str::raw::from_c_str((*err).message as *i8);
     let klass = (*err).klass;
-    (message, klass)
+    (message, cast::transmute(klass as u64))
 }
 
 /** Error classes */
+#[deriving(Eq,ToStr,Clone)]
 pub enum GitError {
     GITERR_NOMEMORY,
     GITERR_OS,
@@ -59,34 +77,6 @@ pub enum GitError {
     GITERR_MERGE,
 }
 
-pub struct Repository {
-    priv repo: *ext::git_repository,
-}
-
-pub struct Reference<'self> {
-    priv c_ref: *ext::git_reference,
-    priv owner: &'self Repository,
-}
-
-pub struct GitIndex<'self> {
-    priv index: *ext::git_index,
-    priv owner: &'self Repository,
-}
-
-pub struct Tree<'self> {
-    priv tree: *ext::git_tree,
-    priv owner: &'self Repository,
-}
-
-pub struct TreeEntry {
-    priv tree_entry: *ext::git_tree_entry,
-    priv owned: bool,
-}
-
-pub struct TreeBuilder {
-    priv bld: *ext::git_treebuilder,
-}
-
 pub enum WalkMode {
     WalkSkip = 1,
     WalkPass = 0,
@@ -106,65 +96,24 @@ pub enum DiffDelta {
 }
 
 pub struct DiffList {
-    priv difflist: *ext::git_diff_list,
+    priv difflist: *mut ffi::git_diff_list,
 }
 
-impl TreeBuilder {
-    /// Create a new tree builder.
-    /// The tree builder can be used to create or modify trees in memory and
-    /// write them as tree objects to the database.
-    /// The tree builder will start with no entries and will have to be filled manually.
-    pub fn new() -> TreeBuilder
-    {
-        let mut bld:*ext::git_treebuilder = std::ptr::null();
-        unsafe {
-            if ext::git_treebuilder_create(&mut bld, std::ptr::null()) == 0 {
-                TreeBuilder { bld: bld }
-            } else {
-                fail!(~"failed to create treebuilder")
-            }
-        }
-    }
-
-    /// Create a new tree builder.
-    /// The tree builder will be initialized with the entries of the given tree.
-    pub fn from_tree(tree: &Tree) -> TreeBuilder
-    {
-        let mut bld:*ext::git_treebuilder = std::ptr::null();
-        unsafe {
-            if ext::git_treebuilder_create(&mut bld, tree.tree) == 0 {
-                TreeBuilder { bld: bld }
-            } else {
-                fail!(~"failed to create treebuilder")
-            }
-        }
-    }
-}
-
-pub struct Blob<'self> {
-    priv blob: *ext::git_blob,
-    priv owner: &'self Repository,
-}
-
-pub struct Commit<'self> {
-    priv commit: *ext::git_commit,
-    priv owner: &'self Repository,
-}
-
+#[deriving(Clone)]
 pub struct Time {
-    pub time: i64,      /* time in seconds from epoch */
-    pub offset: int,    /* timezone offset, in minutes */
+    time: i64,      /* time in seconds from epoch */
+    offset: int,    /* timezone offset, in minutes */
 }
 
-#[deriving(Eq)]
+#[deriving(Eq, Clone)]
 pub struct Signature {
-    pub name: ~str,
-    pub email: ~str,
-    pub when: Time,
+    name: ~str,
+    email: ~str,
+    when: Time,
 }
 
 pub struct OID {
-    pub id: [std::libc::c_char, ..20],
+    id: [std::libc::c_char, ..20],
 }
 
 /// Status flags for a single file.
@@ -173,20 +122,21 @@ pub struct OID {
 /// Status compares the working directory, the index, and the current HEAD of the repository.
 /// The `index` set of flags represents the status of file in the index relative to the HEAD,
 /// and the `wt` set of flags represent the status of the file in the working directory
-/// relative to the index.
+/// relative to the index
+#[deriving(Clone,Eq)]
 pub struct Status {
-    pub index_new: bool,
-    pub index_modified: bool,
-    pub index_deleted: bool,
-    pub index_renamed: bool,
-    pub index_typechange: bool,
+    index_new: bool,
+    index_modified: bool,
+    index_deleted: bool,
+    index_renamed: bool,
+    index_typechange: bool,
 
-    pub wt_new: bool,
-    pub wt_modified: bool,
-    pub wt_deleted: bool,
-    pub wt_typechange: bool,
+    wt_new: bool,
+    wt_modified: bool,
+    wt_deleted: bool,
+    wt_typechange: bool,
 
-    pub ignored: bool,
+    ignored: bool,
 }
 
 impl Status {
@@ -237,16 +187,18 @@ pub enum OType {
 // FIXME: there should be better ways to do this...
 // if you call this library in multiple tasks,
 // this function must be called before calling any other functions in library
+#[fixed_stack_segment]
 pub fn threads_init() {
     unsafe {
-        ext::git_threads_init();
+        ffi::git_threads_init();
     }
 }
 
 // if you call this library in multiple tasks,
 // this function must be called before shutting down the library
+#[fixed_stack_segment]
 pub fn threads_shutdown() {
     unsafe {
-        ext::git_threads_shutdown();
+        ffi::git_threads_shutdown();
     }
 }

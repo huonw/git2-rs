@@ -1,5 +1,13 @@
-use super::*;
-use ext;
+use std::ptr;
+use super::{raise, GitError, OID, last_error};
+use ffi;
+use repository::Repository;
+use tree::Tree;
+
+pub struct GitIndex<'self> {
+    index: *mut ffi::git_index,
+    owner: &'self Repository,
+}
 
 impl<'self> GitIndex<'self> {
     /// Add or update an index entry from a file on disk
@@ -18,10 +26,11 @@ impl<'self> GitIndex<'self> {
     /// the conflict will be moved to the "resolve undo" (REUC) section.
     ///
     /// raises git_error on error
+    #[fixed_stack_segment]
     pub fn add_bypath(&self, path: &str) {
         unsafe {
-            do path.as_c_str |c_path| {
-                if ext::git_index_add_bypath(self.index, c_path) != 0 {
+            do path.with_c_str |c_path| {
+                if ffi::git_index_add_bypath(self.index, c_path) != 0 {
                     raise()
                 }
             }
@@ -37,10 +46,11 @@ impl<'self> GitIndex<'self> {
     /// the conflict will be moved to the "resolve undo" (REUC) section.
     ///
     /// raises git_error on error
+    #[fixed_stack_segment]
     pub fn remove_bypath(&self, path: &str) {
         unsafe {
-            do path.as_c_str |c_path| {
-                if ext::git_index_remove_bypath(self.index, c_path) != 0 {
+            do path.with_c_str |c_path| {
+                if ffi::git_index_remove_bypath(self.index, c_path) != 0 {
                     raise();
                 }
             }
@@ -51,9 +61,11 @@ impl<'self> GitIndex<'self> {
     ///
     /// The current index contents will be replaced by the specified tree.
     /// raises git_error on error
+    #[fixed_stack_segment]
     pub fn read_tree(&self, tree: &Tree) {
         unsafe {
-            if ext::git_index_read_tree(self.index, tree.tree) != 0 {
+            if ffi::git_index_read_tree(self.index,
+                                        tree.tree as *ffi::git_tree) != 0 {
                 raise()
             }
         }
@@ -62,10 +74,11 @@ impl<'self> GitIndex<'self> {
     /// Write an existing index object from memory back to disk using an atomic file lock.
     ///
     /// raises git_error on error
+    #[fixed_stack_segment]
     pub fn write(&self)
     {
         unsafe {
-            if ext::git_index_write(self.index) != 0 {
+            if ffi::git_index_write(self.index) != 0 {
                 raise()
             }
         }
@@ -82,12 +95,15 @@ impl<'self> GitIndex<'self> {
     /// to an existing repository.
     ///
     /// The index must not contain any file in conflict.
+    #[fixed_stack_segment]
     pub fn write_tree<'r>(&'r self) -> Result<~Tree<'r>, (~str, GitError)> {
         unsafe {
             let mut oid = OID { id: [0, .. 20] };
-            if ext::git_index_write_tree(&mut oid, self.index) == 0 {
-                let mut ptr_to_tree: *ext::git_tree = std::ptr::null();
-                if ext::git_tree_lookup(&mut ptr_to_tree, self.owner.repo, &oid) == 0 {
+            let oid_ptr: *mut OID = &mut oid;
+            if ffi::git_index_write_tree(oid_ptr as *mut ffi::Struct_git_oid, self.index) == 0 {
+                let mut ptr_to_tree = ptr::mut_null();
+                if ffi::git_tree_lookup(&mut ptr_to_tree, self.owner.repo,
+                                        oid_ptr as *ffi::Struct_git_oid) == 0 {
                     Ok( ~Tree { tree: ptr_to_tree, owner: self.owner } )
                 } else {
                     Err( last_error() )
@@ -101,18 +117,20 @@ impl<'self> GitIndex<'self> {
     /// Clear the contents (all the entries) of an index object.
     /// This clears the index object in memory; changes must be manually
     /// written to disk for them to take effect.
+    #[fixed_stack_segment]
     pub fn clear(&self) {
         unsafe {
-            ext::git_index_clear(self.index);
+            ffi::git_index_clear(self.index);
         }
     }
 }
 
 #[unsafe_destructor]
 impl<'self> Drop for GitIndex<'self> {
-    fn finalize(&self) {
+    #[fixed_stack_segment]
+    fn drop(&self) {
         unsafe {
-            ext::git_index_free(self.index);
+            ffi::git_index_free(self.index);
         }
     }
 }

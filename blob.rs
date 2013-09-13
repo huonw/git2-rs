@@ -1,16 +1,23 @@
-use super::{Blob, OID};
+use super::{OID};
 use std::cast;
 use std::vec::raw::buf_as_slice;
-use ext;
+use ffi;
+use repository::Repository;
+
+pub struct Blob<'self> {
+    blob: *mut ffi::git_blob,
+    owner: &'self Repository,
+}
 
 impl<'self> Blob<'self> {
     /// get the id of the blob
+    #[fixed_stack_segment]
     pub fn id<'r>(&self) -> &'r OID
     {
         unsafe {
             // OID pointer returned by git_blob_id is const pointer
             // so it's safe to use as long as self is alive
-            cast::transmute(ext::git_blob_id(self.blob))
+            cast::transmute(ffi::git_blob_id(self.blob as *ffi::git_blob))
         }
     }
 
@@ -18,11 +25,12 @@ impl<'self> Blob<'self> {
     /// Get a read-only buffer with the raw content of a blob.
     ///
     /// A reference to the raw content of a blob is transferred to closure
+    #[fixed_stack_segment]
     pub fn rawcontent_as_slice<T>(&self, f: &fn(v: &[u8]) -> T) -> T
     {
         unsafe {
-            let ptr:*u8 = cast::transmute(ext::git_blob_rawcontent(self.blob));
-            let size = ext::git_blob_rawsize(self.blob);
+            let ptr:*u8 = cast::transmute(ffi::git_blob_rawcontent(self.blob as *ffi::git_blob));
+            let size = ffi::git_blob_rawsize(self.blob as *ffi::git_blob);
             if(size < 0) {
                 fail!(~"negative blob size")
             }
@@ -35,19 +43,21 @@ impl<'self> Blob<'self> {
     /// The heuristic used to guess if a file is binary is taken from core git:
     /// Searching for NUL bytes and looking for a reasonable ratio of printable
     /// to non-printable characters among the first 4000 bytes.
+    #[fixed_stack_segment]
     pub fn is_binary(&self) -> bool
     {
         unsafe {
-            ext::git_blob_is_binary(self.blob) as bool
+            ffi::git_blob_is_binary(self.blob) != 0
         }
     }
 }
 
 #[unsafe_destructor]
 impl<'self> Drop for Blob<'self> {
-    fn finalize(&self) {
+    #[fixed_stack_segment]
+    fn drop(&self) {
         unsafe {
-            ext::git_blob_free(self.blob);
+            ffi::git_blob_free(self.blob);
         }
     }
 }
